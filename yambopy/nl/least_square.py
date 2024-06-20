@@ -82,7 +82,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD):
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] - 1j*coeff.x[2*(ii-1)+2])
     return copt
 #
-def LS_SF_Analysis(nldb, X_order=2, T_range=[-1,-1], period=30, mesh=1000,prn_Peff=False,prn_Xhi=True,SAMP_MOD='linear'):
+def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=True,SAMP_MOD='linear'):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -101,18 +101,12 @@ def LS_SF_Analysis(nldb, X_order=2, T_range=[-1,-1], period=30, mesh=1000,prn_Pe
     if efield["name"] != "SIN" and efield["name"] != "SOFTSIN" and efield["name"] != "ANTIRES":
         raise ValueError("Harmonic analysis works only with SIN or SOFTSIN fields")
 
-    l_test_one_field=False
     if(nldb.Efield_general[1]["name"] == "SIN" or nldb.Efield_general[1]["name"] == "SOFTSIN"):
         # frequency of the second and third laser, respectively)
         pump_freq=nldb.Efield_general[1]["freq_range"][0] 
         print("Frequency of the second field : "+str(pump_freq*ha2ev)+" [eV] \b")
     elif(nldb.Efield_general[1]["name"] == "none"):
-        print("Only one field present, please use standard harmonic_analysis.py for SHG,THG, etc..!")
-        print("* * * Test mode with a single field * * * ")
-        print(" * * * Frequency of the second field assumed to be zero * * *")
-        print(" * * * Only results for SHG,THG,... are correct * * * ")
-        l_test_one_field=True
-        pump_freq=0.0
+        raise ValueError("Only one field present, please use standard harmonic_analysis.py for SHG,THG, etc..!")
     else:
         raise ValueError("Fields different from SIN/SOFTSIN are not supported ! ")
     
@@ -137,8 +131,12 @@ def LS_SF_Analysis(nldb, X_order=2, T_range=[-1,-1], period=30, mesh=1000,prn_Pe
     T_period=2.0*np.pi/W_step
     print("Effective max time period for field1 ",str(T_period/fs2aut)+" [fs] ")
 
-    T_range[0]=time[-1]-period*fs2aut
-    T_range[1]=time[-1]
+    T_range=np.zeros(2,dtype=np.double)
+    if (time[-1]>period*fs2aut):
+        T_range[0]=time[-1]-period*fs2aut
+        T_range[1]=time[-1]
+    else:
+        raise ValueError("Your time range is too long !")
     
     print("Initial time range : ",str(T_range[0]/fs2aut),'-',str(T_range[1]/fs2aut)," [fs] ")
     print("Pump frequency : ",str(pump_freq*ha2ev),' [eV] ')
@@ -159,14 +157,14 @@ def LS_SF_Analysis(nldb, X_order=2, T_range=[-1,-1], period=30, mesh=1000,prn_Pe
 
     X_effective       =np.zeros((V_size,n_frequencies,3),dtype=np.cdouble)
     Susceptibility    =np.zeros((V_size,n_frequencies,3),dtype=np.cdouble)
-    sampling          =np.zeros((V_size,2,n_frequencies,3),dtype=np.cdouble)
+    plot_sampling          =np.zeros((mesh,2,n_frequencies,3),dtype=np.double)
     
     print("Loop in frequecies...")
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
         for i_d in range(3):
             X_effective[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh,efield,SAMP_MOD)
-            sampling=Sampling(polarization[i_f][i_d,:],T_range,T_step,mesh,efield,SAMP_MOD)
+            plot_sampling[:,:,i_f,i_d]=Sampling(polarization[i_f][i_d,:],T_range,T_step,mesh,efield,SAMP_MOD)
     
     # Calculate Susceptibilities from X_effective
     for i_v in range(V_size):
@@ -209,28 +207,28 @@ def LS_SF_Analysis(nldb, X_order=2, T_range=[-1,-1], period=30, mesh=1000,prn_Pe
         # Print Sampling point
         footer2='Sampled polarization'
         for i_f in range(n_frequencies):
-            values=np.c_[sampling[:,0,i_f,0]/fs2aut]
-            values=np.append(values,np.c_[sampling[:,1,i_f,0]],axis=1)
-            values=np.append(values,np.c_[sampling[:,1,i_f,1]],axis=1)
-            values=np.append(values,np.c_[sampling[:,1,i_f,2]],axis=1)
+            values=np.c_[plot_sampling[:,0,i_f,0]/fs2aut]
+            values=np.append(values,np.c_[plot_sampling[:,1,i_f,0]],axis=1)
+            values=np.append(values,np.c_[plot_sampling[:,1,i_f,1]],axis=1)
+            values=np.append(values,np.c_[plot_sampling[:,1,i_f,2]],axis=1)
             output_file3='o.YamboPy-sampling_F'+str(i_f+1)
             np.savetxt(output_file3,values,header=header2,delimiter=' ',footer=footer2)
 
-        #print("Print general error in P(t) reconstruction ")
-        #footer2='Error in reconstructed polarization'
-        #header2="[eV]            "
-        #header2+="err[Px]     "
-        #header2+="err[Py]     "
-        #header2+="err[Pz]     "
-        #i_t_start = int(np.round(T_range[0]/T_step)) 
-        #values=np.zeros((n_frequencies,4),dtype=np.double)
-        #N=len(P[i_f,i_d,:])-i_t_start
-        #for i_f in range(n_frequencies):
-        #    values[i_f,0]=freqs[i_f]*ha2ev
-        #    for i_d in range(3):
-        #        values[i_f,i_d+1]=np.sqrt(np.sum((P[i_f,i_d,i_t_start:].real-polarization[i_f][i_d,i_t_start:]))**2)/N
-        #output_file4='o.YamboPy-errP'
-        #np.savetxt(output_file4,values,header=header2,delimiter=' ',footer=footer2)
+        print("Print general error in P(t) reconstruction ")
+        footer2='Error in reconstructed polarization'
+        header2="[eV]            "
+        header2+="err[Px]     "
+        header2+="err[Py]     "
+        header2+="err[Pz]     "
+        i_t_start = int(np.round(T_range[0]/T_step)) 
+        values=np.zeros((n_frequencies,4),dtype=np.double)
+        N=len(P[i_f,i_d,:])-i_t_start
+        for i_f in range(n_frequencies):
+            values[i_f,0]=freqs[i_f]*ha2ev
+            for i_d in range(3):
+                values[i_f,i_d+1]=np.sqrt(np.sum((P[i_f,i_d,i_t_start:].real-polarization[i_f][i_d,i_t_start:]))**2)/N
+        output_file4='o.YamboPy-errP'
+        np.savetxt(output_file4,values,header=header2,delimiter=' ',footer=footer2)
         
     # Print the result
     for i_v in range(V_size):
