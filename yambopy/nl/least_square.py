@@ -27,14 +27,14 @@ def LS_fit_diff(c,order,f1,f2,t,s):
                 n = n + 1
             else:
                 f = f1*ii + f2*jj 
-                output[:] = output[:] + c[n]*np.cos(f*t[:]) + c[n+1]*np.sin(f*t[:])
+                output[:] = output[:] + c[n]*np.cos(f*t[:]) - c[n+1]*np.sin(f*t[:])
                 n = n + 2
     for ii in range(1,order+1):
         for jj in range(ii,order+1):
             if (ii+jj > order):
                 continue
             f = abs(f1*ii - f2*jj)
-            output[:] = output[:] + c[n]*np.cos(f*t[:]) + c[n+1]*np.sin(f*t[:])
+            output[:] = output[:] + c[n]*np.cos(f*t[:]) - c[n+1]*np.sin(f*t[:])
             n = n + 2
     return s-output
 #
@@ -79,7 +79,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD):
     coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=1e-8,gtol=1e-15,ftol=1e-8)
     copt[0] = coeff.x[0]
     for ii in range(1,M):
-        copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] - 1j*coeff.x[2*(ii-1)+2])
+        copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt
 #
 def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=True,SAMP_MOD='linear'):
@@ -171,8 +171,6 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=
         i_order1, i_order2 = mapping[i_v]
         for i_f in range(n_frequencies):
             Susceptibility[i_v,i_f,:]=X_effective[i_v,i_f,:]
-#            if l_test_one_field:
-#                Susceptibility[i_v,i_f,:]*=Divide_by_the_Field(nldb.Efield[0],abs(i_order))
             D2=1.0
             if i_order1!=0:
                 D2*=Divide_by_the_Field(nldb.Efield[0],abs(i_order1))
@@ -190,7 +188,7 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=
             for i_d in range(3):
                 for i_v in range(V_size):
                     i_order1, i_order2 = mapping[i_v]
-                    P[i_f,i_d,:]+=X_effective[i_v,i_f,i_d]*np.exp(-1j * (i_order1*freqs[i_f]+i_order2*pump_freq) * time[:])
+                    P[i_f,i_d,:]+=X_effective[i_v,i_f,i_d]*np.exp(1j * (i_order1*freqs[i_f]+i_order2*pump_freq) * time[:])
         header2="[fs]            "
         header2+="Px     "
         header2+="Py     "
