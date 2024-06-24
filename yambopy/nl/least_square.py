@@ -70,8 +70,8 @@ def Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD):
 def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ftol):
     N = 2*sum(range(order+2)) -1 + 2*sum(range(1+order%2,order,2))
     c = np.zeros(N)
-    c[1] = 100000.0
-    c[2*(order+1)] = 100000.0
+    c[1] = 1.0
+    c[2*(order+1)] = 1.0
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
     t = Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD)[:,0]
