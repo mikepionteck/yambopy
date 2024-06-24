@@ -67,22 +67,22 @@ def Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD):
     Sample[:,1]=P_i
     return Sample
 #
-def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD):
+def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ftol):
     N = 2*sum(range(order+2)) -1 + 2*sum(range(1+order%2,order,2))
     c = np.zeros(N)
-    c[1] = 1.0
-    c[2*(order+1)] = 1.0
+    c[1] = 100000.0
+    c[2*(order+1)] = 100000.0
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
     t = Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD)[:,0]
     s = Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD)[:,1]
-    coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=1e-8,gtol=1e-15,ftol=1e-8)
+    coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=xtol,gtol=gtol,ftol=ftol)
     copt[0] = coeff.x[0]
     for ii in range(1,M):
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt
 #
-def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=True,SAMP_MOD='linear'):
+def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=True,SAMP_MOD='linear',xtol=1e-8,gtol=1e-15,ftol=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -163,7 +163,7 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
         for i_d in range(3):
-            X_effective[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh,efield,SAMP_MOD)
+            X_effective[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ftol)
             plot_sampling[:,:,i_f,i_d]=Sampling(polarization[i_f][i_d,:],T_range,T_step,mesh,efield,SAMP_MOD)
     
     # Calculate Susceptibilities from X_effective
@@ -188,7 +188,7 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_Xhi=
             for i_d in range(3):
                 for i_v in range(V_size):
                     i_order1, i_order2 = mapping[i_v]
-                    P[i_f,i_d,:]+=X_effective[i_v,i_f,i_d]*np.exp(1j * (i_order1*freqs[i_f]+i_order2*pump_freq) * time[:])
+                    P[i_f,i_d,:]+=2*X_effective[i_v,i_f,i_d]*np.exp(1j * (i_order1*freqs[i_f]+i_order2*pump_freq) * time[:])
         header2="[fs]            "
         header2+="Px     "
         header2+="Py     "
