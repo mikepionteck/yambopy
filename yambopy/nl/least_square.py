@@ -109,7 +109,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ft
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt, coeff.optimality
 #
-def LS_SF_Analysis(dec,nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',xtol=1e-8,gtol=1e-15,ftol=1e-8):
+def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',xtol=1e-8,gtol=1e-15,ftol=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation

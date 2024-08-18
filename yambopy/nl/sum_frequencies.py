@@ -133,7 +133,7 @@ def fundamental_frequency_and_time_period(f1_eV, f2_eV):
 
     return gcd_frequency_eV, fundamental_time_period_fs
 
-def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, T_range=[-1, -1],prn_Peff=False,prn_Xhi=True,INV_MODE='svd',SAMP_MOD='log'):
+def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, period=30,prn_Peff=False,prn_Fundamentals=False,prn_Xhi=True,INV_MODE='svd',SAMP_MOD='log'):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -188,25 +188,31 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, T_range=[-1, -1],prn_Peff=F
     T_period=2.0*np.pi/W_step
     print("Effective max time period for field1 ",str(T_period/fs2aut)+" [fs] ")
 
-    threshhold_period = 10**3
-    tolerance = 1e-12  # Define a small tolerance for floating-point comparison
-    filtered_freqs = []
-    comment_freqs = []
-    for i_f in range(len(freqs)):
-        f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
-        if T <= threshhold_period + tolerance:
-            filtered_freqs.append(freqs[i_f])
-            print(freqs[i_f], f, T)
-        else:
-            comment_freqs.append(freqs[i_f])
-            #print(freqs[i_f], f, T)
-    n_frequencies = len(filtered_freqs)
-    freqs = np.array(filtered_freqs)
+    if prn_Fundamentals:
+        #threshhold_period = 10**3
+        #filtered_freqs = []
+        #comment_freqs = []
+        # Calculate the fundamental frequency and time period for each frequency
+        print("Print fundamental frequency and time period for each frequency...")
+        for i_f in range(len(freqs)):
+            f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
+            print("Frequency",i_f,":", f,"eV;", T,"fs")
+            #if T <= threshhold_period:
+            #    filtered_freqs.append(freqs[i_f])
+            #    print(freqs[i_f], f, T)
+            #else:
+            #    comment_freqs.append(freqs[i_f])
+            #    #print(freqs[i_f], f, T)
+        print("End of fundamental frequency and time period for each frequency...")
+        #n_frequencies = len(filtered_freqs)
+        #freqs = np.array(filtered_freqs)
 
-    if T_range[0] <= 0.0:
-        T_range[0]=time[-1]-300*fs2aut#2.0/nldb.NL_damping*6.0
-    if T_range[1] <= 0.0:
+    T_range=np.zeros(2,dtype=np.double)
+    if (time[-1]>period*fs2aut):
+        T_range[0]=time[-1]-period*fs2aut
         T_range[1]=time[-1]
+    else:
+        raise ValueError("Your time range is too long !")
     
     T_range_initial=np.copy(T_range)
 
