@@ -108,6 +108,30 @@ def SF_Coefficents_Inversion(NW,NX,P,W1,W2,T_range,T_step,efield,tol,INV_MODE,SA
 
     return X_here,Sampling
 
+def find_dec(a):
+  # Convert the value to a string
+  value_str = str(a)
+  
+  # Find the position of the decimal point
+  if '.' in value_str:
+      decimal_pos = value_str.find('.')
+      # Calculate the number of decimal places
+      num_decimals = len(value_str) - decimal_pos - 1
+  else:
+      num_decimals = 0
+  
+  return num_decimals
+#
+def fundamental_frequency_and_time_period(f1_eV, f2_eV):
+    dec = max(find_dec(f1_eV), find_dec(f2_eV))
+    # Calculate the greatest common divisor (GCD) of the two frequencies
+    gcd_frequency_eV = np.gcd(int(f1_eV * 10**dec), int(f2_eV * 10**dec)) / 10**dec
+
+    # Calculate the fundamental time period T = 1 / frequency
+    hbar_eVs = 6.582119569e-16  # Reduced Planck's constant in eV⋅s
+    fundamental_time_period_fs = hbar_eVs / gcd_frequency_eV * 1e15  # Convert seconds to femtoseconds
+
+    return gcd_frequency_eV, fundamental_time_period_fs
 
 def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, T_range=[-1, -1],prn_Peff=False,prn_Xhi=True,INV_MODE='svd',SAMP_MOD='log'):
     # Time series 
@@ -164,8 +188,23 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, T_range=[-1, -1],prn_Peff=F
     T_period=2.0*np.pi/W_step
     print("Effective max time period for field1 ",str(T_period/fs2aut)+" [fs] ")
 
+    threshhold_period = 10**3
+    tolerance = 1e-12  # Define a small tolerance for floating-point comparison
+    filtered_freqs = []
+    comment_freqs = []
+    for i_f in range(len(freqs)):
+        f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
+        if T <= threshhold_period + tolerance:
+            filtered_freqs.append(freqs[i_f])
+            print(freqs[i_f], f, T)
+        else:
+            comment_freqs.append(freqs[i_f])
+            #print(freqs[i_f], f, T)
+    n_frequencies = len(filtered_freqs)
+    freqs = np.array(filtered_freqs)
+
     if T_range[0] <= 0.0:
-        T_range[0]=2.0/nldb.NL_damping*6.0
+        T_range[0]=time[-1]-300*fs2aut#2.0/nldb.NL_damping*6.0
     if T_range[1] <= 0.0:
         T_range[1]=time[-1]
     
@@ -262,7 +301,7 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, T_range=[-1, -1],prn_Peff=F
             else:
                 Unit_of_Measure = np.power(SVCMm12VMm1/AU2VMm1,abs(i_order)+abs(i_order2)-1,dtype=np.double)
                 Susceptibility[i_order+X_order,i_order2+X_order,:,:]=Susceptibility[i_order+X_order,i_order2+X_order,:,:]*Unit_of_Measure
-            output_file='o.YamboPy-SF_probe_order_'+str(i_order)+'_'+str(i_order2)
+            output_file='o.YamboPy-SF_DFT_probe_order_'+str(i_order)+'_'+str(i_order2)
             if i_order == 0 or (i_order == 1 and i_order2 == 0) or (i_order == 0 and i_order2 == 1):
                 header="E [eV]            X/Im(x)            X/Re(x)            X/Im(y)            X/Re(y)            X/Im(z)            X/Re(z)"
             else:
