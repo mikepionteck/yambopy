@@ -128,12 +128,12 @@ def fundamental_frequency_and_time_period(f1_eV, f2_eV):
     gcd_frequency_eV = np.gcd(int(f1_eV * 10**dec), int(f2_eV * 10**dec)) / 10**dec
 
     # Calculate the fundamental time period T = 1 / frequency
-    hbar_eVs = 6.582119569e-16  # Reduced Planck's constant in eV⋅s
-    fundamental_time_period_fs = hbar_eVs / gcd_frequency_eV * 1e15  # Convert seconds to femtoseconds
+    h_eVs = 4.135667696e-15  # Planck's constant
+    fundamental_time_period_fs = h_eVs / gcd_frequency_eV * 1e15  # Convert seconds to femtoseconds
 
     return gcd_frequency_eV, fundamental_time_period_fs
 
-def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, period=30,prn_Peff=False,prn_Fundamentals=False,prn_Xhi=True,INV_MODE='svd',SAMP_MOD='log'):
+def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4,prn_Peff=False,prn_Xhi=True,INV_MODE='svd',SAMP_MOD='log'):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -171,54 +171,29 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, period=30,prn_Peff=False,pr
         raise ValueError("Three fields not supported yet ! ")
 
     print("Number of frequencies : %d " % n_frequencies)
-    # Smaller frequency
-    W_step=sys.float_info.max
-    max_W =sys.float_info.min
 
     for count, efield in enumerate(nldb.Efield):
         freqs[count]=efield["freq_range"][0]
-        if efield["freq_range"][0]<W_step:
-            W_step=efield["freq_range"][0]
-        if efield["freq_range"][0]>max_W:
-            max_W=efield["freq_range"][0]
-    print("Minimum frequency : ",str(W_step*ha2ev)," [eV] ")
-    print("Maximum frequency : ",str(max_W*ha2ev)," [eV] ")
-    
-    # Period of the incoming laser
-    T_period=2.0*np.pi/W_step
-    print("Effective max time period for field1 ",str(T_period/fs2aut)+" [fs] ")
 
-    if prn_Fundamentals:
-        #threshhold_period = 10**3
-        #filtered_freqs = []
-        #comment_freqs = []
-        # Calculate the fundamental frequency and time period for each frequency
-        print("Print fundamental frequency and time period for each frequency...")
-        for i_f in range(len(freqs)):
-            f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
-            print("Frequency",i_f,":", f,"eV;", T,"fs")
-            #if T <= threshhold_period:
-            #    filtered_freqs.append(freqs[i_f])
-            #    print(freqs[i_f], f, T)
-            #else:
-            #    comment_freqs.append(freqs[i_f])
-            #    #print(freqs[i_f], f, T)
-        print("End of fundamental frequency and time period for each frequency...")
-        #n_frequencies = len(filtered_freqs)
-        #freqs = np.array(filtered_freqs)
+    print("Frequency range of the first field : "+str(freqs[0]*ha2ev)+" - "+str(freqs[-1]*ha2ev)+" [eV] \b")
 
-    T_range=np.zeros(2,dtype=np.double)
-    if (time[-1]>period*fs2aut):
-        T_range[0]=time[-1]-period*fs2aut
-        T_range[1]=time[-1]
-    else:
-        raise ValueError("Your time range is too long !")
-    
-    T_range_initial=np.copy(T_range)
-
-    print("Initial time range : ",str(T_range[0]/fs2aut),'-',str(T_range[1]/fs2aut)," [fs] ")
     print("Pump frequency : ",str(pump_freq*ha2ev),' [eV] ')
 
+    T_range = np.zeros((n_frequencies,2),dtype=np.double)
+    # Calculate the fundamental frequency and time period for each frequency
+    print("Print fundamental frequency and time period for each frequency...")
+    for i_f in range(len(freqs)):
+        f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
+        T_range[i_f,0]=time[-1]-T*fs2aut
+        T_range[i_f,1]=time[-1]
+        print("Fundamental frequency and time period for frequency %d: %.3f eV, %.3f fs" % (i_f+1, f, T))
+
+    print("End of fundamental frequency and time period for each frequency...")
+
+    damping=50/fs2aut # Hardcoded damping time
+    if any(T_range[:,0]<damping):
+        raise ValueError("Time range too short for the damping time")
+    
     M_size = (2*X_order + 1)**2
     X_effective       =np.zeros((M_size,M_size,n_frequencies,3),dtype=np.cdouble)
     Sampling          =np.zeros((M_size,2,n_frequencies,3),dtype=np.double)
@@ -227,11 +202,8 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, period=30,prn_Peff=False,pr
     print("Loop in frequecies...")
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
-        #
-#        T_range=update_T_range(T_range_initial,pump_freq,freqs[i_f])  # Update T_range according to the laser frequencies
-
         for i_d in range(3):
-            X_effective[:,:,i_f,i_d],Sampling[:,:,i_f,i_d]=SF_Coefficents_Inversion(X_order+1, X_order+1, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,efield,tol,INV_MODE,SAMP_MOD)
+            X_effective[:,:,i_f,i_d],Sampling[:,:,i_f,i_d]=SF_Coefficents_Inversion(X_order+1, X_order+1, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range[i_f,:],T_step,efield,tol,INV_MODE,SAMP_MOD)
         
     # Calculate Susceptibilities from X_effective
     for i_order in range(-X_order,X_order+1):
@@ -288,10 +260,10 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, period=30,prn_Peff=False,pr
         header2+="err[Px]     "
         header2+="err[Py]     "
         header2+="err[Pz]     "
-        i_t_start = int(np.round(T_range[0]/T_step)) 
         values=np.zeros((n_frequencies,4),dtype=np.double)
-        N=len(P[i_f,i_d,:])-i_t_start
         for i_f in range(n_frequencies):
+            i_t_start = int(np.round(T_range[i_f,0]/T_step)) 
+            N=len(P[i_f,i_d,:])-i_t_start
             values[i_f,0]=freqs[i_f]*ha2ev
             for i_d in range(3):
                 values[i_f,i_d+1]=np.sqrt(np.sum((P[i_f,i_d,i_t_start:].real-polarization[i_f][i_d,i_t_start:]))**2)/N

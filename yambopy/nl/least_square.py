@@ -15,6 +15,31 @@ import scipy.linalg
 import sys
 import os
 
+def required_sampling_points(frequency1_eV, frequency2_eV, sampling_time_fs, safety_factor=1):
+
+    h = 4.135667696e-15  # Planck's constant in eV·s
+
+    # Convert eV to Hz
+    frequency1_Hz = frequency1_eV / h
+    frequency2_Hz = frequency2_eV / h
+    
+    # Identify the maximum frequency
+    max_frequency_Hz = max(frequency1_Hz, frequency2_Hz)
+    
+    # Calculate the Nyquist rate
+    nyquist_rate = 2 * max_frequency_Hz  # Nyquist criterion
+
+    # Apply safety factor
+    sampling_rate = safety_factor * nyquist_rate
+
+    # Convert sampling time from fs to seconds
+    sampling_time_s = sampling_time_fs * 1e-15  # Convert fs to seconds
+    
+    # Calculate the number of sampling points
+    num_sampling_points = int(np.ceil(sampling_rate * sampling_time_s))
+    
+    return num_sampling_points
+#
 def LS_fit_diff(c,order,f1,f2,t,s):
     output = np.zeros(len(t))
     n = 0
@@ -38,7 +63,7 @@ def LS_fit_diff(c,order,f1,f2,t,s):
             n = n + 2
     return s-output
 #
-def Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD):
+def Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold=1e-15,loops=50):
     i_t_start = int(np.round(T_range[0]/T_step)) 
     i_deltaT  = int(np.round((T_range[1]-T_range[0])/T_step)/mesh)
 
@@ -49,7 +74,8 @@ def Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD):
     # Calculation of  T_i and P_i
     if SAMP_MOD=='linear':
         for i_t in range(mesh):
-            T_i[i_t] = (i_t_start + i_deltaT * i_t)*T_step - efield["initial_time"]
+            T_i[i_t] = (i_t_start + i_deltaT * i_t)*T_step #- efield["initial_time"]
+            #print(efield["initial_time"]/fs2aut)
             P_i[i_t] = P[i_t_start + i_deltaT * i_t]
     elif SAMP_MOD=='log':
         T_i=np.geomspace(i_t_start*T_step, T_range[1], mesh, endpoint=False)
@@ -63,6 +89,51 @@ def Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD):
             i_t=int(np.round(T_i[i1]/mesh))
             T_i[i1]=i_t*T_step
             P_i[i1]=P[i_t]
+    elif SAMP_MOD=='adaptive':
+        # Filter time and P array to only include the range of interest
+        mask = (time >= T_range[0]) & (time <= T_range[1])
+        time_filtered = time[mask]
+        #print(time_filtered/fs2aut)
+        P_filtered = P[mask]
+
+        for i_t in range(mesh):
+            T_i[i_t] = (i_t_start + i_deltaT * i_t)*T_step #- efield["initial_time"]
+            P_i[i_t] = P[i_t_start + i_deltaT * i_t]
+        # Create an initial uniformly sampled subset of points
+        indices = np.searchsorted(time_filtered, T_i)
+        #print(indices)
+        # Adaptive sampling loop
+        j = 0
+        while True:
+            new_times = []
+            new_values = []
+
+            for i in range(len(T_i) - 1):
+                # Midpoint between current and next point
+                mid_index = (indices[i] + indices[i+1]) // 2
+                mid_time = time_filtered[mid_index]
+                mid_value = P_filtered[mid_index]
+
+                if T_range[0] <= mid_time <= T_range[1]:
+                    # Check the difference in signal values (local derivative)
+                    if abs(mid_value - P_i[i]) > threshold:
+                        new_times.append(mid_time)
+                        new_values.append(mid_value)
+        
+            if not new_times:
+                break  # Stop if no more points need to be added
+            elif j >= loops:
+                break
+            j += 1
+        
+            # Add new points and re-sort the sampling points
+            T_i = np.sort(np.concatenate([T_i, new_times]))
+            P_i = np.concatenate([P_i, new_values])
+            indices = np.searchsorted(time_filtered, T_i)  # Update indices
+
+        print("Adaptive sampling loop iterations:", j)
+        Sample = np.zeros((len(T_i),2), dtype=np.double)
+        
     Sample[:,0]=T_i
     Sample[:,1]=P_i
     return Sample
@@ -87,20 +158,23 @@ def fundamental_frequency_and_time_period(f1_eV, f2_eV):
     gcd_frequency_eV = np.gcd(int(f1_eV * 10**dec), int(f2_eV * 10**dec)) / 10**dec
 
     # Calculate the fundamental time period T = 1 / frequency
-    hbar_eVs = 6.582119569e-16  # Reduced Planck's constant in eV⋅s
-    fundamental_time_period_fs = hbar_eVs / gcd_frequency_eV * 1e15  # Convert seconds to femtoseconds
+    h_eVs = 4.135667696e-15  # Planck's constant
+    fundamental_time_period_fs = h_eVs / gcd_frequency_eV * 1e15  # Convert seconds to femtoseconds
 
     return gcd_frequency_eV, fundamental_time_period_fs
 #
-def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ftol):
+def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops,xtol,gtol,ftol):
+    # Number of Fourier coefficients
     N = 2*sum(range(order+2)) -1 + 2*sum(range(1+order%2,order,2))
+    # Memory allocation
     c = np.zeros(N)
-    c[1] = 1 #10**(-13)
-    c[2*(order+1)] = 1 #10**(-13)
+    c[1] = 1
+    c[2*(order+1)] = 1
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
-    t = Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD)[:,0]
-    s = Sampling(P,T_range,T_step,mesh,efield,SAMP_MOD)[:,1]
+    # Sampling
+    t = Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops)[:,0]
+    s = Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops)[:,1]
     coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=xtol,gtol=gtol,ftol=ftol)
     copt[0] = coeff.x[0]
     #print(coeff.optimality)
@@ -109,7 +183,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ft
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt, coeff.optimality
 #
-def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',xtol=1e-8,gtol=1e-15,ftol=1e-8):
+def LS_SF_Analysis(nldb, X_order=2, period=30,prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,threshold=1e-15,loops=50,xtol=1e-8,gtol=1e-15,ftol=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -141,42 +215,21 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=
         raise ValueError("Three fields not supported yet ! ")
 
     print("Number of frequencies : %d " % n_frequencies)
-    # Smaller frequency
-    W_step=sys.float_info.max
-    max_W =sys.float_info.min
 
     for count, efield in enumerate(nldb.Efield):
         freqs[count]=efield["freq_range"][0]
-        if efield["freq_range"][0]<W_step:
-            W_step=efield["freq_range"][0]
-        if efield["freq_range"][0]>max_W:
-            max_W=efield["freq_range"][0]
-    print("Minimum frequency : ",str(W_step*ha2ev)," [eV] ")
-    print("Maximum frequency : ",str(max_W*ha2ev)," [eV] ")
     
-    # Period of the incoming laser
-    T_period=2.0*np.pi/W_step
-    print("Effective max time period for field1 ",str(T_period/fs2aut)+" [fs] ")
+    print("Frequency range of the first field : "+str(freqs[0]*ha2ev)+" - "+str(freqs[-1]*ha2ev)+" [eV] \b")
+
+    print("Pump frequency : ",str(pump_freq*ha2ev),' [eV] ')
 
     if prn_Fundamentals:
-        #threshhold_period = 10**3
-        #filtered_freqs = []
-        #comment_freqs = []
         # Calculate the fundamental frequency and time period for each frequency
         print("Print fundamental frequency and time period for each frequency...")
         for i_f in range(len(freqs)):
             f, T = fundamental_frequency_and_time_period(freqs[i_f]*ha2ev, pump_freq*ha2ev)
-            print("Frequency",i_f,":", f,"eV;", T,"fs")
-            #if T <= threshhold_period:
-            #    filtered_freqs.append(freqs[i_f])
-            #    print(freqs[i_f], f, T)
-            #else:
-            #    comment_freqs.append(freqs[i_f])
-            #    #print(freqs[i_f], f, T)
+            print("Fundamental frequency and time period for frequency %d: %.3f eV, %.3f fs" % (i_f+1, f, T))
         print("End of fundamental frequency and time period for each frequency...")
-        #n_frequencies = len(filtered_freqs)
-        #freqs = np.array(filtered_freqs)
-
 
     T_range=np.zeros(2,dtype=np.double)
     if (time[-1]>period*fs2aut):
@@ -185,8 +238,14 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=
     else:
         raise ValueError("Your time range is too long !")
     
+    # Number of sampling points
+    mesh = np.zeros(n_frequencies, dtype=np.int64)
+    for i_f in range(n_frequencies):
+        mesh[i_f] = required_sampling_points(freqs[i_f]*ha2ev, pump_freq*ha2ev, period, safety_factor)
+    #mesh = max(mesh_array)
+
     print("Initial time range : ",str(T_range[0]/fs2aut),'-',str(T_range[1]/fs2aut)," [fs] ")
-    print("Pump frequency : ",str(pump_freq*ha2ev),' [eV] ')
+    #print("Number of initial sampling points : ",str(mesh))
 
     mapping = []
     for ii in range(X_order+1):
@@ -205,15 +264,13 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=
     X_effective       =np.zeros((V_size,n_frequencies,3),dtype=np.cdouble)
     Optimality        =np.zeros((V_size,n_frequencies,3),dtype=np.cdouble)
     Susceptibility    =np.zeros((V_size,n_frequencies,3),dtype=np.cdouble)
-    plot_sampling     =np.zeros((mesh,2,n_frequencies,3),dtype=np.double)
     
     print("Loop in frequecies...")
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
         for i_d in range(3):
-            X_effective[:,i_f,i_d], Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh,efield,SAMP_MOD,xtol,gtol,ftol)
-            plot_sampling[:,:,i_f,i_d]=Sampling(polarization[i_f][i_d,:],T_range,T_step,mesh,efield,SAMP_MOD)
-    
+            X_effective[:,i_f,i_d], Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh[i_f],efield,time,SAMP_MOD,threshold,loops,xtol,gtol,ftol)
+
     # Calculate Susceptibilities from X_effective
     for i_v in range(V_size):
         i_order1, i_order2 = mapping[i_v]
@@ -250,28 +307,36 @@ def LS_SF_Analysis(nldb, X_order=2, period=30, mesh=1000,prn_Peff=False,prn_FFT=
         headerError+="err[Pz]     "
         i_t_start = int(np.round(T_range[0]/T_step)) 
         valuesError=np.zeros((n_frequencies,4),dtype=np.double)
-        N=len(P[i_f,i_d,:])-i_t_start
+        N=len(P[i_f,i_d,i_t_start:])
         for i_f in range(n_frequencies):
-            # Print reconstructed polarization
-            values=np.c_[time.real/fs2aut]
-            values=np.append(values,np.c_[P[i_f,0,:].real],axis=1)
-            values=np.append(values,np.c_[P[i_f,1,:].real],axis=1)
-            values=np.append(values,np.c_[P[i_f,2,:].real],axis=1)
-            output_file2='o.YamboPy-pol_reconstructed_F'+str(i_f+1)
-            np.savetxt(output_file2,values,header=header2,delimiter=' ',footer=footer2)
-        
-            # Print sampling point
-            valuesSampling=np.c_[plot_sampling[:,0,i_f,0]/fs2aut]
-            valuesSampling=np.append(valuesSampling,np.c_[plot_sampling[:,1,i_f,0]],axis=1)
-            valuesSampling=np.append(valuesSampling,np.c_[plot_sampling[:,1,i_f,1]],axis=1)
-            valuesSampling=np.append(valuesSampling,np.c_[plot_sampling[:,1,i_f,2]],axis=1)
-            output_file3='o.YamboPy-sampling_F'+str(i_f+1)
-            np.savetxt(output_file3,valuesSampling,header=header2,delimiter=' ',footer=footerSampling)
-
-            # Print error in reconstructed polarization in all frequencies
             valuesError[i_f,0]=freqs[i_f]*ha2ev
             for i_d in range(3):
+        
+                # Call the Sampling function once and store the result
+                sampling_result = Sampling(polarization[i_f][i_d, :], T_range, T_step, mesh[i_f], efield, time, SAMP_MOD,threshold,loops)
+
+                # Calculate the number of sampling points
+                sampling_points = len(sampling_result[:, 0])
+
+                # Populate plot_sampling with the result
+                plot_sampling = np.zeros((sampling_points, 2), dtype=np.double)
+                plot_sampling[:, :] = sampling_result
+
+                # Print reconstructed polarization
+                values=np.c_[time.real/fs2aut]
+                values=np.append(values,np.c_[P[i_f,i_d,:].real],axis=1)
+                output_file2='o.YamboPy-pol_reconstructed_F'+str(i_f+1)+'_D'+str(i_d+1)
+                np.savetxt(output_file2,values,header=header2,delimiter=' ',footer=footer2)
+
+                # Print sampling point
+                valuesSampling=np.c_[plot_sampling[:,0]/fs2aut]
+                valuesSampling=np.append(valuesSampling,np.c_[plot_sampling[:,1]],axis=1)
+                output_file3='o.YamboPy-sampling_F'+str(i_f+1)+'_D'+str(i_d+1)
+                np.savetxt(output_file3,valuesSampling,header=header2,delimiter=' ',footer=footerSampling)
+
+                # Print error in reconstructed polarization in all frequencies
                 valuesError[i_f,i_d+1]=np.sqrt(np.sum((P[i_f,i_d,i_t_start:].real-polarization[i_f][i_d,i_t_start:]))**2)/N
+                
         output_file4='o.YamboPy-errP'
         np.savetxt(output_file4,values,header=header2,delimiter=' ',footer=footer2)
 
