@@ -183,7 +183,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,time,SAMP_MOD,thresho
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt, coeff.optimality
 #
-def LS_SF_Analysis(nldb, X_order=2, period=30,prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,threshold=1e-15,loops=50,xtol=1e-8,gtol=1e-15,ftol=1e-8):
+def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,threshold=1e-15,loops=50,xtol=1e-8,gtol=1e-15,ftol=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -231,12 +231,12 @@ def LS_SF_Analysis(nldb, X_order=2, period=30,prn_Peff=False,prn_FFT=False,prn_F
             print("Fundamental frequency and time period for frequency %d: %.3f eV, %.3f fs" % (i_f+1, f, T))
         print("End of fundamental frequency and time period for each frequency...")
 
-    T_range=np.zeros(2,dtype=np.double)
-    if (time[-1]>period*fs2aut):
-        T_range[0]=time[-1]-period*fs2aut
+    if T_range[0] <= 0.0:
+        T_range[0]=2.0/nldb.NL_damping*6.0
+    if T_range[1] <= 0.0:
         T_range[1]=time[-1]
-    else:
-        raise ValueError("Your time range is too long !")
+
+    period = T_range[1]-T_range[0]
     
     # Number of sampling points
     mesh = np.zeros(n_frequencies, dtype=np.int64)
