@@ -63,7 +63,7 @@ def LS_fit_diff(c,order,f1,f2,t,s):
             n = n + 2
     return s-output
 #
-def Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold=1e-15,loops=50):
+def Sampling(P,T_range,T_step,mesh,SAMP_MOD):
     i_t_start = int(np.round(T_range[0]/T_step)) 
     i_deltaT  = int(np.round((T_range[1]-T_range[0])/T_step)/mesh)
 
@@ -89,50 +89,6 @@ def Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold=1e-15,loops=50
             i_t=int(np.round(T_i[i1]/mesh))
             T_i[i1]=i_t*T_step
             P_i[i1]=P[i_t]
-    elif SAMP_MOD=='adaptive':
-        # Filter time and P array to only include the range of interest
-        mask = (time >= T_range[0]) & (time <= T_range[1])
-        time_filtered = time[mask]
-        #print(time_filtered/fs2aut)
-        P_filtered = P[mask]
-
-        for i_t in range(mesh):
-            T_i[i_t] = (i_t_start + i_deltaT * i_t)*T_step #- efield["initial_time"]
-            P_i[i_t] = P[i_t_start + i_deltaT * i_t]
-        # Create an initial uniformly sampled subset of points
-        indices = np.searchsorted(time_filtered, T_i)
-        #print(indices)
-        # Adaptive sampling loop
-        j = 0
-        while True:
-            new_times = []
-            new_values = []
-
-            for i in range(len(T_i) - 1):
-                # Midpoint between current and next point
-                mid_index = (indices[i] + indices[i+1]) // 2
-                mid_time = time_filtered[mid_index]
-                mid_value = P_filtered[mid_index]
-
-                if T_range[0] <= mid_time <= T_range[1]:
-                    # Check the difference in signal values (local derivative)
-                    if abs(mid_value - P_i[i]) > threshold:
-                        new_times.append(mid_time)
-                        new_values.append(mid_value)
-        
-            if not new_times:
-                break  # Stop if no more points need to be added
-            elif j >= loops:
-                break
-            j += 1
-        
-            # Add new points and re-sort the sampling points
-            T_i = np.sort(np.concatenate([T_i, new_times]))
-            P_i = np.concatenate([P_i, new_values])
-            indices = np.searchsorted(time_filtered, T_i)  # Update indices
-
-        print("Adaptive sampling loop iterations:", j)
-        Sample = np.zeros((len(T_i),2), dtype=np.double)
         
     Sample[:,0]=T_i
     Sample[:,1]=P_i
@@ -163,7 +119,7 @@ def fundamental_frequency_and_time_period(f1_eV, f2_eV):
 
     return gcd_frequency_eV, fundamental_time_period_fs
 #
-def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops,xtol,gtol,ftol):
+def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol):
     # Number of Fourier coefficients
     N = 2*sum(range(order+2)) -1 + 2*sum(range(1+order%2,order,2))
     # Memory allocation
@@ -173,8 +129,8 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,efield,time,SAMP_MOD,thresho
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
     # Sampling
-    t = Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops)[:,0]
-    s = Sampling(P,T_range,T_step,mesh,efield,time,SAMP_MOD,threshold,loops)[:,1]
+    t = Sampling(P,T_range,T_step,mesh,SAMP_MOD)[:,0]
+    s = Sampling(P,T_range,T_step,mesh,SAMP_MOD)[:,1]
     coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=xtol,gtol=gtol,ftol=ftol)
     copt[0] = coeff.x[0]
     #print(coeff.optimality)
@@ -242,10 +198,11 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
     mesh = np.zeros(n_frequencies, dtype=np.int64)
     for i_f in range(n_frequencies):
         mesh[i_f] = required_sampling_points(freqs[i_f]*ha2ev, pump_freq*ha2ev, period, safety_factor)
+        #print(mesh[i_f])
     #mesh = max(mesh_array)
 
     print("Initial time range : ",str(T_range[0]/fs2aut),'-',str(T_range[1]/fs2aut)," [fs] ")
-    #print("Number of initial sampling points : ",str(mesh))
+    print("Maximum number of initial sampling points : ",str(max(mesh))," points ")
 
     mapping = []
     for ii in range(X_order+1):
@@ -269,7 +226,7 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
         for i_d in range(3):
-            X_effective[:,i_f,i_d], Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh[i_f],efield,time,SAMP_MOD,threshold,loops,xtol,gtol,ftol)
+            X_effective[:,i_f,i_d], Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh[i_f],SAMP_MOD,xtol,gtol,ftol)
 
     # Calculate Susceptibilities from X_effective
     for i_v in range(V_size):
@@ -313,7 +270,7 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
             for i_d in range(3):
         
                 # Call the Sampling function once and store the result
-                sampling_result = Sampling(polarization[i_f][i_d, :], T_range, T_step, mesh[i_f], efield, time, SAMP_MOD,threshold,loops)
+                sampling_result = Sampling(polarization[i_f][i_d, :], T_range, T_step, mesh[i_f], SAMP_MOD)
 
                 # Calculate the number of sampling points
                 sampling_points = len(sampling_result[:, 0])
