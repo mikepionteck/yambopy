@@ -11,9 +11,11 @@ from yambopy.nl.harmonic_analysis import update_T_range
 from tqdm import tqdm
 import scipy as sci
 from scipy import optimize
+from scipy.optimize import minimize
 import scipy.linalg
 import sys
 import os
+from sklearn.model_selection import KFold
 
 def required_sampling_points(frequency1_eV, frequency2_eV, sampling_time_fs, safety_factor=1):
 
@@ -63,8 +65,18 @@ def LS_fit_diff(c,order,f1,f2,t,s):
             n = n + 2
     return s-output
 #
+# Ridge regularization in nearly degenerate cases for least squares fitting
+def LS_fit_diff_ridge(c,order,f1,f2,t,s,lambda_ridge):
+    residual = LS_fit_diff(c,order,f1,f2,t,s)
+    ridge = 0
+    diff = abs(f1*ha2ev-f2*ha2ev)
+    if diff < 1e-2:
+        ridge = lambda_ridge
+    res = residual + np.sqrt(ridge)*np.sum(c)
+    return res
+#
 def Sampling(P,T_range,T_step,mesh,SAMP_MOD):
-    i_t_start = int(np.round(T_range[0]/T_step)) 
+    i_t_start = int(np.round(T_range[0]/T_step))
     i_deltaT  = int(np.round((T_range[1]-T_range[0])/T_step)/mesh)
 
     # Memory allocation 
@@ -119,7 +131,7 @@ def fundamental_frequency_and_time_period(f1_eV, f2_eV):
 
     return gcd_frequency_eV, fundamental_time_period_fs
 #
-def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol):
+def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol,lambda_ridge):
     # Number of Fourier coefficients
     N = 2*sum(range(order+2)) -1 + 2*sum(range(1+order%2,order,2))
     # Memory allocation
@@ -131,7 +143,8 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol):
     # Sampling
     t = Sampling(P,T_range,T_step,mesh,SAMP_MOD)[:,0]
     s = Sampling(P,T_range,T_step,mesh,SAMP_MOD)[:,1]
-    coeff = sci.optimize.least_squares(LS_fit_diff,c,args=(order,f1,f2,t,s),xtol=xtol,gtol=gtol,ftol=ftol)
+    # Find the coefficients
+    coeff = sci.optimize.least_squares(LS_fit_diff_ridge,c,args=(order,f1,f2,t,s,lambda_ridge),xtol=xtol,gtol=gtol,ftol=ftol)
     copt[0] = coeff.x[0]
     #print(coeff.optimality)
     #print(coeff.success)
@@ -139,7 +152,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol):
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt, coeff.optimality
 #
-def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,threshold=1e-15,loops=50,xtol=1e-8,gtol=1e-15,ftol=1e-8):
+def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,xtol=1e-8,gtol=1e-15,ftol=1e-8,lambda_ridge=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -197,12 +210,16 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
     # Number of sampling points
     mesh = np.zeros(n_frequencies, dtype=np.int64)
     for i_f in range(n_frequencies):
-        mesh[i_f] = required_sampling_points(freqs[i_f]*ha2ev, pump_freq*ha2ev, period, safety_factor)
-        #print(mesh[i_f])
+        # In degenerate case use the maximum number of sampling points
+        if abs(freqs[i_f]*ha2ev-pump_freq*ha2ev) < 1e-2:
+            mesh[i_f] = T_range[1]/T_step
+        else:
+            mesh[i_f] = required_sampling_points(freqs[i_f]*ha2ev, pump_freq*ha2ev, period, safety_factor)
+        print("Number of sampling points for frequency %d: %d" % (i_f+1, mesh[i_f]))
     #mesh = max(mesh_array)
 
     print("Initial time range : ",str(T_range[0]/fs2aut),'-',str(T_range[1]/fs2aut)," [fs] ")
-    print("Maximum number of initial sampling points : ",str(max(mesh))," points ")
+    print("Minimum and maximum number of initial sampling points : ",str(min(mesh)),'-',str(max(mesh)))
 
     mapping = []
     for ii in range(X_order+1):
@@ -226,7 +243,7 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
     # Find the Fourier coefficients by inversion
     for i_f in tqdm(range(n_frequencies)):
         for i_d in range(3):
-            X_effective[:,i_f,i_d], Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh[i_f],SAMP_MOD,xtol,gtol,ftol)
+            X_effective[:,i_f,i_d],Optimality[:,i_f,i_d]=find_coeff_LS(X_order, polarization[i_f][i_d,:],freqs[i_f],pump_freq,T_range,T_step,mesh[i_f],SAMP_MOD,xtol,gtol,ftol,lambda_ridge)
 
     # Calculate Susceptibilities from X_effective
     for i_v in range(V_size):
