@@ -70,7 +70,7 @@ def LS_fit_diff_ridge(c,order,f1,f2,t,s,lambda_ridge):
     residual = LS_fit_diff(c,order,f1,f2,t,s)
     ridge = 0
     diff = abs(f1*ha2ev-f2*ha2ev)
-    if diff < 1e-2:
+    if diff < 1e9:
         ridge = lambda_ridge
     res = residual + np.sqrt(ridge)*np.sum(c)
     return res
