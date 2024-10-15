@@ -15,7 +15,6 @@ from scipy.optimize import minimize
 import scipy.linalg
 import sys
 import os
-from sklearn.model_selection import KFold
 
 def required_sampling_points(frequency1_eV, frequency2_eV, sampling_time_fs, safety_factor=1):
 
