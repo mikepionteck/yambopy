@@ -69,9 +69,10 @@ def LS_fit_diff_ridge(c,order,f1,f2,t,s,lambda_ridge):
     residual = LS_fit_diff(c,order,f1,f2,t,s)
     ridge = 0
     diff = abs(f1*ha2ev-f2*ha2ev)
-    if diff < 1e9:
+    if diff < 1e-2:
         ridge = lambda_ridge
-    res = residual + np.sqrt(ridge)*np.sum(c)
+    reg_term = ridge * c
+    res = np.concatenate((residual, reg_term))
     return res
 #
 def Sampling(P,T_range,T_step,mesh,SAMP_MOD):
