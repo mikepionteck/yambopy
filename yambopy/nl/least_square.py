@@ -137,8 +137,8 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol,lamb
     # Memory allocation
     c = np.zeros(N)
     c[1] = 1
-    c[7] = 1e-11
-    c[8] = 1e-12
+    #c[7] = 1e-11
+    #c[8] = 1e-12
     c[2*(order+1)] = 1
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
@@ -155,7 +155,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol,lamb
         copt[ii] = 0.5*(coeff.x[2*(ii-1)+1] + 1j*coeff.x[2*(ii-1)+2])
     return copt, coeff.optimality
 #
-def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,xtol=1e-8,gtol=1e-15,ftol=1e-8,lambda_ridge=1e-8):
+def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False,prn_Fundamentals=False,prn_Xhi=True,SAMP_MOD='linear',safety_factor=1,harmonic_factor=1,xtol=1e-8,gtol=1e-15,ftol=1e-8,lambda_ridge=1e-8):
     # Time series 
     time  =nldb.IO_TIME_points
     # Time step of the simulation
@@ -215,7 +215,7 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
     for i_f in range(n_frequencies):
         # In degenerate case use the maximum number of sampling points
         if abs(freqs[i_f]*ha2ev-pump_freq*ha2ev) < 1e-2:
-            mesh[i_f] = T_range[1]/T_step
+            mesh[i_f] = T_range[1]/T_step*harmonic_factor
         else:
             mesh[i_f] = required_sampling_points(freqs[i_f]*ha2ev, pump_freq*ha2ev, period, safety_factor)
         print("Number of sampling points for frequency %d: %d" % (i_f+1, mesh[i_f]))
