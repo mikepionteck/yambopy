@@ -137,6 +137,8 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol,lamb
     # Memory allocation
     c = np.zeros(N)
     c[1] = 1
+    c[7] = 1e-11
+    c[8] = 1e-12
     c[2*(order+1)] = 1
     M = int((N-1)/2+1)
     copt  = np.zeros(M,dtype=np.cdouble)
@@ -146,6 +148,7 @@ def find_coeff_LS(order,P,f1,f2,T_range,T_step,mesh,SAMP_MOD,xtol,gtol,ftol,lamb
     # Find the coefficients
     coeff = sci.optimize.least_squares(LS_fit_diff_ridge,c,args=(order,f1,f2,t,s,lambda_ridge),xtol=xtol,gtol=gtol,ftol=ftol)
     copt[0] = coeff.x[0]
+    #print(coeff.x[7],coeff.x[8])
     #print(coeff.optimality)
     #print(coeff.success)
     for ii in range(1,M):
@@ -250,6 +253,8 @@ def LS_SF_Analysis(nldb, X_order=2,T_range=[-1, -1],prn_Peff=False,prn_FFT=False
         i_order1, i_order2 = mapping[i_v]
         for i_f in range(n_frequencies):
             Susceptibility[i_v,i_f,:]=X_effective[i_v,i_f,:]
+            #print("Order : ",i_order1,i_order2," Iteration : ",i_v)
+            #print(Susceptibility[i_v,i_f,1])
             D2=1.0
             if i_order1!=0:
                 D2*=Divide_by_the_Field(nldb.Efield[0],abs(i_order1))
