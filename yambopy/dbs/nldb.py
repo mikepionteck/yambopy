@@ -112,6 +112,7 @@ class YamboNLDB(object):
         self.E_ks        =[]
         self.Efield      =[] # Store the first external field for each run at different frequencies
         self.Efield2     =[]
+        self.Efield3     =[]
         #
         if self.n_angles!=0:
             self.n_runs=self.n_angles
@@ -147,8 +148,10 @@ class YamboNLDB(object):
             # I don't need it in the pump-probe configuration
             efield=self.read_Efield(data_p_and_j,self.RT_step,1)
             efield2=self.read_Efield(data_p_and_j,self.RT_step,2)
+            efield3=self.read_Efield(data_p_and_j,self.RT_step,3)
             self.Efield.append(efield.copy())
             self.Efield2.append(efield2.copy())
+            self.Efield3.append(efield3.copy())
 
     def __str__(self):
         """
