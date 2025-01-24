@@ -110,7 +110,7 @@ def SF_Coefficents_Inversion(N_samp,NX,NX2,NX3,P,W1,W2,W3,T_range,T_step,efield,
 
 # Calculate X_here
     X_here=np.zeros((2*NX+1, 2*NX2+1, 2*NX3+1),dtype=np.cdouble)
-    for i_n,i_n2,i_n3 in itertools.product(range(-NX, NX+1),range(-NX2, NX2+1).range(-NX3, NX3+1)):
+    for i_n,i_n2,i_n3 in itertools.product(range(-NX, NX+1),range(-NX2, NX2+1),range(-NX3, NX3+1)):
         i_c=C[i_n+NX,i_n2+NX2,i_n3+NX3]
         if INV_MODE=='lstsq' or INV_MODE=='lstsq_init':
             X_here[i_n+NX,i_n2+NX2,i_n3+NX3]=INV[i_c]
