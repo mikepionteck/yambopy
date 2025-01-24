@@ -213,7 +213,7 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, X_order2=None, X_order3=Non
 #            print(" WARNING: frequency "+str(i_f+1)+" = "+str(freqs[i_f]*ha2ev)+ " very close to the pump one: inversion tolerance reduced ")
 #            tol=tol*100.0
         for i_d in range(3):
-            X_effective[:,:,i_f,i_d],Sampling[:,:,i_f,i_d],INV0[:,i_f,i_d]=SF_Coefficents_Inversion(N_samp, X_order, X_order2, X_order3, polarization[i_f][i_d,:],freqs[i_f],pump_freq,probe_freq,T_range,T_step,efield,tol,INV_MODE,SAMP_MOD)
+            X_effective[:,:,:,i_f,i_d],Sampling[:,:,i_f,i_d],INV0[:,i_f,i_d]=SF_Coefficents_Inversion(N_samp, X_order, X_order2, X_order3, polarization[i_f][i_d,:],freqs[i_f],pump_freq,probe_freq,T_range,T_step,efield,tol,INV_MODE,SAMP_MOD)
         
         
 # check non-converged points and degneracies and fix them
@@ -251,7 +251,7 @@ def SF_Harmonic_Analysis(nldb, tol=1e-10, X_order=4, X_order2=None, X_order3=Non
                INV0[:,i_f,i_d]=INV0[:,i_f-1,i_d]
            else:
                INV0[:,i_f,i_d]=(INV0[:,i_f+1,i_d]+INV0[:,i_f-1,i_d])/2.0
-               X_effective[:,:,i_f,i_d],Sampling[:,:,i_f,i_d],INV0[:,i_f,i_d]=SF_Coefficents_Inversion(N_samp, X_order, X_order2, X_order3, polarization[i_f][i_d,:],freqs[i_f],pump_freq,probe_freq,T_range,T_step,efield,tol,INV_MODE="lstsq_init",SAMP_MOD=SAMP_MOD,INV0=INV0[:,i_f,i_d])
+               X_effective[:,:,:,i_f,i_d],Sampling[:,:,i_f,i_d],INV0[:,i_f,i_d]=SF_Coefficents_Inversion(N_samp, X_order, X_order2, X_order3, polarization[i_f][i_d,:],freqs[i_f],pump_freq,probe_freq,T_range,T_step,efield,tol,INV_MODE="lstsq_init",SAMP_MOD=SAMP_MOD,INV0=INV0[:,i_f,i_d])
 
     print("Calculate susceptibility ")
     for i_order,i_order2,i_order3 in itertools.product(range(-X_order,X_order+1),range(-X_order2,X_order2+1),range(-X_order3,X_order3+1)):
